@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private data class ChatMessage(val text: String, val fromNova: Boolean)
 
@@ -88,6 +90,7 @@ private fun NovaScreen(
     onSpeak: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
     var showNovaSettings by remember { mutableStateOf(false) }
@@ -102,6 +105,11 @@ private fun NovaScreen(
     var wakePhraseMode by remember {
         mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getBoolean("wake_phrase_mode", false))
     }
+    var offlineAiMode by remember {
+        mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getBoolean("offline_ai_mode", false))
+    }
+    var localModelAvailable by remember { mutableStateOf(LocalLlmClient.isModelDownloaded(context)) }
+    var modelDownloadStatus by remember { mutableStateOf(if (localModelAvailable) "Offline model downloaded" else "Offline model not installed") }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -147,6 +155,26 @@ private fun NovaScreen(
         }
     }
 
+    fun askOffline(query: String) {
+        scope.launch {
+            status = "Thinking locally · your prompt stays on this phone"
+            val result = runCatching { LocalLlmClient.answer(context, query) }
+            result.fold(
+                onSuccess = {
+                    messages = messages + ChatMessage(it, true)
+                    status = "Offline AI response complete · no network used"
+                    onSpeak(it)
+                },
+                onFailure = {
+                    val message = it.message ?: "Unknown local model error"
+                    messages = messages + ChatMessage("Offline AI unavailable: $message", true)
+                    status = "Offline AI unavailable"
+                    onSpeak("Offline AI is unavailable. $message")
+                }
+            )
+        }
+    }
+
     fun respond(raw: String) {
         val text = raw.trim()
         if (text.isEmpty()) return
@@ -154,6 +182,28 @@ private fun NovaScreen(
         val lower = text.lowercase(Locale.ROOT)
         var asyncAiRequest = false
         val answer = when {
+            lower.startsWith("remember that ") || lower.startsWith("remember ") -> {
+                val fact = text.substringAfter("remember").trim().removePrefix("that").trim().trimEnd('.', '!')
+                if (fact.isBlank()) {
+                    "Tell me what you'd like me to remember, for example: remember that I prefer short answers."
+                } else {
+                    val prefs = context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                    val saved = runCatching { org.json.JSONArray(prefs.getString("nova_memories", "[]") ?: "[]") }.getOrElse { org.json.JSONArray() }
+                    saved.put(fact)
+                    prefs.edit().putString("nova_memories", saved.toString()).apply()
+                    "I'll remember this on your phone: $fact"
+                }
+            }
+            lower.contains("what do you remember") || lower == "show memories" -> {
+                val prefs = context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                val saved = runCatching { org.json.JSONArray(prefs.getString("nova_memories", "[]") ?: "[]") }.getOrElse { org.json.JSONArray() }
+                if (saved.length() == 0) "I don't have any saved memories yet. Say 'remember that …' to save one on this device."
+                else "Here's what I remember on this device:\n" + (0 until saved.length()).joinToString("\n") { "• " + saved.optString(it) }
+            }
+            lower.startsWith("forget what you remember") || lower.startsWith("forget all memories") || lower == "forget everything" -> {
+                context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).edit().remove("nova_memories").apply()
+                "I've cleared Nova's saved memories on this device."
+            }
             lower.contains("weather") || lower.contains("forecast") || lower.contains("temperature outside") -> {
                 val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                 val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -232,6 +282,47 @@ private fun NovaScreen(
                 if (opened) "Opening the Clock app to set an alarm. Choose the time and confirm it there."
                 else "I couldn't open an alarm app."
             }
+            lower.contains("volume up") || lower.contains("increase volume") || lower.contains("turn volume up") -> {
+                val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI)
+                "Media volume increased."
+            }
+            lower.contains("volume down") || lower.contains("decrease volume") || lower.contains("turn volume down") -> {
+                val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI)
+                "Media volume decreased."
+            }
+            lower.contains("mute volume") || lower == "mute" -> {
+                val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, android.media.AudioManager.FLAG_SHOW_UI)
+                "Media volume muted."
+            }
+            lower.contains("unmute volume") || lower == "unmute" -> {
+                val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, android.media.AudioManager.FLAG_SHOW_UI)
+                "Media volume unmuted."
+            }
+            lower.contains("wifi") || lower.contains("wi-fi") || lower.contains("bluetooth") ||
+                lower.contains("brightness") || lower.contains("display settings") ||
+                lower.contains("sound settings") || lower.contains("location settings") ||
+                lower.contains("battery settings") || lower.contains("hotspot") ||
+                lower.contains("accessibility settings") || lower.contains("notification settings") -> {
+                val action = when {
+                    lower.contains("wifi") || lower.contains("wi-fi") || lower.contains("hotspot") ->
+                        if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_INTERNET_CONNECTIVITY else android.provider.Settings.ACTION_WIFI_SETTINGS
+                    lower.contains("bluetooth") ->
+                        if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_BLUETOOTH else android.provider.Settings.ACTION_BLUETOOTH_SETTINGS
+                    lower.contains("brightness") || lower.contains("display settings") -> android.provider.Settings.ACTION_DISPLAY_SETTINGS
+                    lower.contains("sound settings") -> android.provider.Settings.ACTION_SOUND_SETTINGS
+                    lower.contains("location settings") -> android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                    lower.contains("battery settings") -> android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS
+                    lower.contains("accessibility settings") -> android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
+                    else -> android.provider.Settings.ACTION_NOTIFICATION_SETTINGS
+                }
+                val opened = runCatching { context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+                if (opened) "Opening the relevant Android control panel. Confirm changes in the system panel."
+                else "Android didn't allow that control panel to open."
+            }
             lower.startsWith("call ") || lower.startsWith("dial ") -> {
                 val number = text.substringAfter(" ").trim().filter { it.isDigit() || it == '+' }
                 val opened = number.isNotBlank() && runCatching {
@@ -267,10 +358,21 @@ private fun NovaScreen(
                     "clock" to "com.google.android.deskclock",
                     "calendar" to "com.google.android.calendar"
                 )
-                val packageName = knownApps[name.lowercase(Locale.ROOT)]
+                val normalizedName = name.lowercase(Locale.ROOT)
+                val packageName = knownApps[normalizedName]
                 val appIntent = packageName?.let { context.packageManager.getLaunchIntentForPackage(it) }
-                val opened = appIntent != null && runCatching {
-                    context.startActivity(appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val dynamicIntent = if (appIntent == null) {
+                    val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    context.packageManager.queryIntentActivities(launcher, 0)
+                        .firstOrNull { it.loadLabel(context.packageManager).toString().equals(name, ignoreCase = true) }
+                        ?.activityInfo?.let { info ->
+                            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                                .setClassName(info.packageName, info.name)
+                        }
+                } else null
+                val targetIntent = appIntent ?: dynamicIntent
+                val opened = targetIntent != null && runCatching {
+                    context.startActivity(targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
                 if (opened) "Opening $name."
                 else "I couldn't open $name. It may not be installed, or this phone may use a different app package."
@@ -296,27 +398,35 @@ private fun NovaScreen(
                 lower.startsWith("why ") || lower.startsWith("how ") ||
                 lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
                 asyncAiRequest = true
-                NovaAiClient.searchAndAnswer(text, geminiApiKey) { result ->
-                    messages = messages + ChatMessage(result, true)
-                    status = "Web search and AI response complete"
-                    onSpeak(result)
+                if (offlineAiMode && !lower.contains(" latest ") && !lower.contains(" news ") && !lower.startsWith("when is the next")) {
+                    askOffline(text)
+                    "Thinking with your downloaded offline AI model…"
+                } else {
+                    NovaAiClient.searchAndAnswer(text, geminiApiKey) { result ->
+                        messages = messages + ChatMessage(result, true)
+                        status = "Web search and AI response complete"
+                        onSpeak(result)
+                    }
+                    "Searching the web and preparing your answer…"
                 }
-                "Searching the web and preparing your answer…"
             }
             lower == "help" || lower.contains("what can you do") ->
                 "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. Web search and Gemini summaries are available when connected; Gemini requires your own API key. Hey Nova listening requires an on-device speech-recognition pack."
             else -> {
-                // Search ordinary messages automatically; no "search Google" prefix needed.
                 val query = text.trim()
                 asyncAiRequest = query.isNotBlank()
-                if (asyncAiRequest) {
+                if (!asyncAiRequest) "Please type or say something for me to help with."
+                else if (offlineAiMode) {
+                    askOffline(query)
+                    "Thinking with your downloaded offline AI model…"
+                } else {
                     NovaAiClient.searchAndAnswer(query, geminiApiKey) { result ->
                         messages = messages + ChatMessage(result, true)
                         status = "Web search and AI response complete"
                         onSpeak(result)
                     }
                     "Searching the web and preparing your answer…"
-                } else "Please type or say something for me to help with."
+                }
             }
         }
         messages = messages + ChatMessage(answer, true)
