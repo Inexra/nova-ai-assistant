@@ -288,7 +288,7 @@ private fun NovaScreen(
                 else "I couldn't open a timer app."
             }
             lower.startsWith("set an alarm") || lower.startsWith("set alarm") || lower.startsWith("alarm for ") -> {
-                val timeMatch = Regex("""(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?""", RegexOption.IGNORE_CASE)
+                val timeMatch = Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""", RegexOption.IGNORE_CASE)
                     .find(text.substringAfter("for ", text.substringAfter("alarm ", "")))
                 val hourRaw = timeMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
                 val minute = timeMatch?.groupValues?.getOrNull(2)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
