@@ -110,6 +110,7 @@ private fun NovaScreen(
     }
     var localModelAvailable by remember { mutableStateOf(LocalLlmClient.isModelDownloaded(context)) }
     var modelDownloadStatus by remember { mutableStateOf(if (localModelAvailable) "Offline model downloaded" else "Offline model not installed") }
+    var modelDownloading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -195,7 +196,7 @@ private fun NovaScreen(
         var asyncOfflineRequest = false
         val answer = when {
             lower.startsWith("remember that ") || lower.startsWith("remember ") -> {
-                val fact = text.substringAfter("remember").trim().removePrefix("that").trim().trimEnd('.', '!')
+                val fact = Regex("^remember\\s+(?:that\\s+)?", RegexOption.IGNORE_CASE).replaceFirst(text, "").trim().trimEnd('.', '!')
                 if (fact.isBlank()) {
                     "Tell me what you'd like me to remember, for example: remember that I prefer short answers."
                 } else {
@@ -553,7 +554,9 @@ private fun NovaScreen(
                         Text(modelDownloadStatus, style = MaterialTheme.typography.bodySmall, color = Color(0xFF67E8D2))
                         if (!localModelAvailable) {
                             TextButton(
-                                onClick = {
+                                enabled = !modelDownloading,
+                            onClick = {
+                                    modelDownloading = true
                                     modelDownloadStatus = "Starting model download… keep Nova open and use a stable Wi-Fi connection."
                                     LocalLlmClient.downloadModel(
                                         context,
@@ -563,6 +566,7 @@ private fun NovaScreen(
                                             modelDownloadStatus = "Downloading offline AI: $downloadedMb MB$totalText"
                                         },
                                         onComplete = { result ->
+                                            modelDownloading = false
                                             result.fold(
                                                 onSuccess = {
                                                     localModelAvailable = true
