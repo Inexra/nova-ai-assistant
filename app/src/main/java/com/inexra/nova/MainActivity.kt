@@ -109,28 +109,69 @@ private fun NovaScreen(
         val lower = text.lowercase(Locale.ROOT)
         val answer = when {
             lower in listOf("hi", "hello", "hey", "hey nova") ->
-                "Hey! I'm here. The next milestone is adding a local language model so I can answer freely without cloud AI."
-            "settings" in lower -> {
-                runCatching {
+                "Hey! I'm here. Ask a question, say 'search Google for ...', or ask me to open an app."
+            lower == "settings" || lower == "open settings" || lower == "phone settings" -> {
+                val opened = runCatching {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "Opening Android Settings." else "I couldn't open Android Settings."
+            }
+            lower.startsWith("open ") -> {
+                val name = text.substringAfter("open ").trim()
+                val knownApps = mapOf(
+                    "youtube" to "com.google.android.youtube",
+                    "chrome" to "com.android.chrome",
+                    "maps" to "com.google.android.apps.maps",
+                    "google maps" to "com.google.android.apps.maps",
+                    "gmail" to "com.google.android.gm",
+                    "photos" to "com.google.android.apps.photos",
+                    "play store" to "com.android.vending",
+                    "camera" to "com.android.camera2",
+                    "phone" to "com.google.android.dialer",
+                    "messages" to "com.google.android.apps.messaging",
+                    "clock" to "com.google.android.deskclock",
+                    "calendar" to "com.google.android.calendar"
+                )
+                val packageName = knownApps[name.lowercase(Locale.ROOT)]
+                val appIntent = packageName?.let { context.packageManager.getLaunchIntentForPackage(it) }
+                val opened = appIntent != null && runCatching {
+                    context.startActivity(appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "Opening $name."
+                else "I couldn't open $name. It may not be installed, or Android may use a different app package on this phone."
+            }
+            lower.startsWith("search google for ") || lower.startsWith("search for ") || lower.startsWith("google ") -> {
+                val query = when {
+                    lower.startsWith("search google for ") -> text.substring(18).trim()
+                    lower.startsWith("search for ") -> text.substring(11).trim()
+                    else -> text.substring(7).trim()
+                }
+                val opened = query.isNotBlank() && runCatching {
                     context.startActivity(
-                        Intent(android.provider.Settings.ACTION_SETTINGS)
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                }
-                "Opening Android Settings."
-            }
-            "open youtube" in lower -> {
-                val launched = runCatching {
-                    val launchIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.youtube")
-                        ?: throw IllegalStateException("YouTube not installed")
-                    context.startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
-                if (launched) "Opening YouTube." else "I couldn't find the YouTube app."
+                if (opened) "Opening Google results for: $query. I'll add in-app summaries in a later update."
+                else "I couldn't open Google Search."
             }
-            "help" in lower ->
-                "Try: hello, open YouTube, or open settings. These are demo commands; the full local AI is not integrated yet."
+            lower.startsWith("what is ") || lower.startsWith("who is ") ||
+                lower.startsWith("when is ") || lower.startsWith("where is ") ||
+                lower.startsWith("why ") || lower.startsWith("how ") ||
+                lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
+                val opened = runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(text)))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }.isSuccess
+                if (opened) "I'll look that up on Google. Search results are opening in your browser; Nova doesn't yet read and summarize the results inside the app."
+                else "I couldn't open a browser to search that question."
+            }
+            lower == "help" || lower.contains("what can you do") ->
+                "I can open YouTube, Chrome, Maps, Gmail, Photos, Play Store, Camera, Phone, Messages, Clock, Calendar and Settings when installed. I can also open Google Search for questions. In-app web summaries and the offline AI model are still future upgrades."
             else ->
-                "I received that. This MVP doesn't have a local LLM connected yet, so I can't generate an open-ended AI answer offline. That is a planned next step."
+                "I don't have my AI language model connected yet. Try 'open YouTube', 'open Maps', or 'search Google for $text'."
         }
         messages = messages + ChatMessage(answer, true)
         status = "Ready · response generated on device"
