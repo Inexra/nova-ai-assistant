@@ -357,13 +357,13 @@ private fun NovaScreen(
                     lower.contains("wifi") || lower.contains("wi-fi") || lower.contains("hotspot") ->
                         if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_INTERNET_CONNECTIVITY else android.provider.Settings.ACTION_WIFI_SETTINGS
                     lower.contains("bluetooth") ->
-                        if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_BLUETOOTH else android.provider.Settings.ACTION_BLUETOOTH_SETTINGS
+                        android.provider.Settings.ACTION_BLUETOOTH_SETTINGS
                     lower.contains("brightness") || lower.contains("display settings") -> android.provider.Settings.ACTION_DISPLAY_SETTINGS
                     lower.contains("sound settings") -> android.provider.Settings.ACTION_SOUND_SETTINGS
                     lower.contains("location settings") -> android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS
                     lower.contains("battery settings") -> android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS
                     lower.contains("accessibility settings") -> android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
-                    else -> android.provider.Settings.ACTION_NOTIFICATION_SETTINGS
+                    else -> android.provider.Settings.ACTION_SETTINGS
                 }
                 val opened = runCatching { context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
                 if (opened) "Opening the relevant Android control panel. Confirm changes in the system panel."
