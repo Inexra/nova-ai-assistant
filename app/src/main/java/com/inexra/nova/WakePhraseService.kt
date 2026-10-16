@@ -103,7 +103,7 @@ class WakePhraseService : Service() {
 
     private fun openNova() {
         val openIntent = Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra("nova_wake_detected", true)
         runCatching { startActivity(openIntent) }
         val pending = PendingIntent.getActivity(
