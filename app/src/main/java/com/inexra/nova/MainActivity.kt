@@ -108,6 +108,50 @@ private fun NovaScreen(
         messages = messages + ChatMessage(text, false)
         val lower = text.lowercase(Locale.ROOT)
         val answer = when {
+            lower.contains("weather") || lower.contains("forecast") || lower.contains("temperature outside") -> {
+                val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (!fineGranted && !coarseGranted) {
+                    locationPermissionLauncher.launch(arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ))
+                    "I need your location to check your local weather. Please allow location access, then ask me again."
+                } else {
+                    val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+                    val provider = when {
+                        locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) -> android.location.LocationManager.NETWORK_PROVIDER
+                        locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) -> android.location.LocationManager.GPS_PROVIDER
+                        else -> null
+                    }
+                    if (provider == null) {
+                        "Please turn on Location in Android Quick Settings, then ask me for the weather again."
+                    } else {
+                        status = "Getting your location for the local weather…"
+                        try {
+                            locationManager.getCurrentLocation(provider, null, context.mainExecutor) { location ->
+                                if (location != null) {
+                                    val query = "weather near ${location.latitude},${location.longitude} today"
+                                    val opened = runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    }.isSuccess
+                                    status = if (opened) "Opened local weather using your phone's location" else "Couldn't open weather results"
+                                } else {
+                                    status = "Couldn't get a location fix · check that Location is enabled"
+                                    onSpeak("I couldn't get your location. Please check that Location is enabled and try again.")
+                                }
+                            }
+                            "Getting your location and opening today's local weather. Your location is used on your phone to find nearby weather results."
+                        } catch (_: SecurityException) {
+                            "Location access wasn't available. Please allow it in Android Settings and try again."
+                        } catch (_: Exception) {
+                            "I couldn't get your location. Please make sure Location is enabled and try again."
+                        }
+                    }
+                }
+            }
             lower in listOf("hi", "hello", "hey", "hey nova") ->
                 "Hey! I'm Nova. Ask me to open an app, search Google, set a timer, set an alarm, or find directions."
             lower == "settings" || lower == "open settings" || lower == "phone settings" -> {
@@ -236,6 +280,16 @@ private fun NovaScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         status = if (granted) "Microphone permission granted · tap mic again to speak" else "Microphone permission denied"
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        status = if (result.values.any { it }) {
+            "Location permission granted · ask Nova for the weather again"
+        } else {
+            "Location permission denied · enable it in Android Settings to get local weather"
+        }
     }
 
     DisposableEffect(Unit) {
