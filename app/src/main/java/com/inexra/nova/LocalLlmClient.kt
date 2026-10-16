@@ -6,16 +6,15 @@ import android.os.Looper
 import dev.ffmpegkit.llama.Llama
 import dev.ffmpegkit.llama.LlamaConfig
 import dev.ffmpegkit.llama.LlamaModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Optional local language model. The first download needs internet; inference after that
- * runs on the phone CPU and does not send prompts to a server.
- */
+/** Qwen is bundled as an APK asset; it is copied to app-private storage on first use. */
 object LocalLlmClient {
     private const val MODEL_NAME = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
     private const val MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
@@ -29,9 +28,36 @@ object LocalLlmClient {
         return File(directory, MODEL_NAME)
     }
 
+    private fun hasBundledModel(context: Context): Boolean =
+        runCatching { context.assets.open(MODEL_NAME).close(); true }.getOrDefault(false)
+
     fun isModelDownloaded(context: Context): Boolean {
         val file = modelFile(context)
-        return file.isFile && file.length() > 100_000_000L
+        return (file.isFile && file.length() > 100_000_000L) || hasBundledModel(context)
+    }
+
+    private suspend fun ensureModelFile(context: Context): File = withContext(Dispatchers.IO) {
+        val target = modelFile(context)
+        if (target.isFile && target.length() > 100_000_000L) return@withContext target
+        if (!hasBundledModel(context)) {
+            throw IllegalStateException("The offline AI model is not available. Reinstall Nova or download the model in Settings.")
+        }
+        val partial = File(target.parentFile, target.name + ".part")
+        try {
+            context.assets.open(MODEL_NAME).buffered().use { input ->
+                partial.outputStream().buffered().use { output -> input.copyTo(output, 256 * 1024) }
+            }
+            if (partial.length() < 100_000_000L) throw IllegalStateException("The bundled model asset is incomplete.")
+            if (target.exists()) target.delete()
+            if (!partial.renameTo(target)) {
+                partial.copyTo(target, overwrite = true)
+                partial.delete()
+            }
+            target
+        } catch (error: Exception) {
+            partial.delete()
+            throw error
+        }
     }
 
     fun downloadModel(context: Context, onProgress: (Long, Long) -> Unit, onComplete: (Result<File>) -> Unit) {
@@ -84,10 +110,7 @@ object LocalLlmClient {
     }
 
     suspend fun answer(context: Context, prompt: String): String = modelMutex.withLock {
-        val file = modelFile(context)
-        if (!isModelDownloaded(context)) {
-            throw IllegalStateException("Download the optional offline AI model in Nova Settings first.")
-        }
+        val file = ensureModelFile(context)
         var model = loadedModel
         if (model == null || !model.isLoaded) {
             model = Llama.loadModel(
