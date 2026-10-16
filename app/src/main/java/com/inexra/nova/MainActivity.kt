@@ -1,0 +1,327 @@
+package com.inexra.nova
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import java.util.Locale
+
+private data class ChatMessage(val text: String, val fromNova: Boolean)
+
+class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+    private var tts: TextToSpeech? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        tts = TextToSpeech(this, this)
+        setContent { NovaScreen(onSpeak = { say(it) }) }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) tts?.language = Locale.getDefault()
+    }
+
+    private fun say(text: String) {
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "nova-response")
+    }
+
+    override fun onDestroy() {
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NovaScreen(onSpeak: (String) -> Unit) {
+    val context = LocalContext.current
+    var input by remember { mutableStateOf("") }
+    var listening by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Ready · local-first foundation") }
+    var messages by remember {
+        mutableStateOf(
+            listOf(
+                ChatMessage(
+                    "Hey! I'm Nova. This first build can speak replies and try on-device voice input. My local AI brain and always-on wake phrase are still being built.",
+                    true
+                )
+            )
+        )
+    }
+    var recognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+
+    fun respond(raw: String) {
+        val text = raw.trim()
+        if (text.isEmpty()) return
+        messages = messages + ChatMessage(text, false)
+        val lower = text.lowercase(Locale.ROOT)
+        val answer = when {
+            lower in listOf("hi", "hello", "hey", "hey nova") ->
+                "Hey! I'm here. The next milestone is adding a local language model so I can answer freely without cloud AI."
+            "settings" in lower -> {
+                runCatching {
+                    context.startActivity(
+                        Intent(android.provider.Settings.ACTION_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                "Opening Android Settings."
+            }
+            "open youtube" in lower -> {
+                val launched = runCatching {
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.youtube")
+                        ?: throw IllegalStateException("YouTube not installed")
+                    context.startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (launched) "Opening YouTube." else "I couldn't find the YouTube app."
+            }
+            "help" in lower ->
+                "Try: hello, open YouTube, or open settings. These are demo commands; the full local AI is not integrated yet."
+            else ->
+                "I received that. This MVP doesn't have a local LLM connected yet, so I can't generate an open-ended AI answer offline. That is a planned next step."
+        }
+        messages = messages + ChatMessage(answer, true)
+        status = "Ready · response generated on device"
+        onSpeak(answer)
+        input = ""
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        status = if (granted) "Microphone permission granted · tap mic again to speak" else "Microphone permission denied"
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { recognizer?.destroy() }
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(0xFF9C8CFF),
+            secondary = Color(0xFF67E8D2),
+            background = Color(0xFF090B12),
+            surface = Color(0xFF151927)
+        )
+    ) {
+        Scaffold(
+            containerColor = Color(0xFF090B12),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("NOVA", fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+                            Text(
+                                "YOUR PRIVATE AI COMPANION",
+                                fontSize = 10.sp,
+                                color = Color(0xFF9C8CFF),
+                                letterSpacing = 1.4.sp
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            runCatching {
+                                context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                            }
+                        }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Android settings")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF090B12),
+                        titleContentColor = Color.White
+                    )
+                )
+            },
+            bottomBar = {
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0xFF101421))
+                        .navigationBarsPadding().imePadding().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            } else if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+                                status = "No speech recognition service installed"
+                            } else {
+                                runCatching {
+                                    recognizer?.destroy()
+                                    val onDeviceAvailable = Build.VERSION.SDK_INT >= 31 &&
+                                        SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+                                    val sr = if (onDeviceAvailable) {
+                                        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                                    } else {
+                                        SpeechRecognizer.createSpeechRecognizer(context)
+                                    }
+                                    recognizer = sr
+                                    sr.setRecognitionListener(object : RecognitionListener {
+                                        override fun onReadyForSpeech(params: Bundle?) {
+                                            status = if (onDeviceAvailable) "Listening · on-device recognizer" else "Listening · OS recognizer may use network"
+                                        }
+                                        override fun onBeginningOfSpeech() { listening = true }
+                                        override fun onRmsChanged(rmsdB: Float) {}
+                                        override fun onBufferReceived(buffer: ByteArray?) {}
+                                        override fun onEndOfSpeech() { listening = false }
+                                        override fun onError(error: Int) {
+                                            listening = false
+                                            status = "Voice input ended · code " + error
+                                        }
+                                        override fun onResults(results: Bundle?) {
+                                            listening = false
+                                            val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                                            if (spoken != null) respond(spoken) else status = "No speech recognized"
+                                        }
+                                        override fun onPartialResults(partialResults: Bundle?) {}
+                                        override fun onEvent(eventType: Int, params: Bundle?) {}
+                                    })
+                                    val speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                                        .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                                    sr.startListening(speechIntent)
+                                    listening = true
+                                }.onFailure {
+                                    listening = false
+                                    status = "Couldn't start voice input"
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(48.dp).background(
+                            if (listening) Color(0xFFB84666) else Color(0xFF292440),
+                            CircleShape
+                        )
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice input", tint = Color.White)
+                    }
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Ask Nova anything…", color = Color.Gray) },
+                        shape = RoundedCornerShape(18.dp),
+                        maxLines = 3,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF9C8CFF),
+                            unfocusedBorderColor = Color(0xFF34394C)
+                        )
+                    )
+                    IconButton(
+                        onClick = { respond(input) },
+                        enabled = input.isNotBlank(),
+                        modifier = Modifier.size(48.dp).background(Color(0xFF7B68EE), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send message", tint = Color.White)
+                    }
+                }
+            }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    Modifier.fillMaxWidth().height(154.dp).background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF25204A), Color(0xFF111B2A), Color(0xFF101421))
+                        ),
+                        RoundedCornerShape(24.dp)
+                    ).padding(18.dp)
+                ) {
+                    Column(Modifier.align(Alignment.CenterStart)) {
+                        Text(
+                            "YOUR AI. YOUR DEVICE.",
+                            color = Color(0xFF67E8D2),
+                            fontSize = 11.sp,
+                            letterSpacing = 1.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "A more independent\nassistant starts here.",
+                            color = Color.White,
+                            fontSize = 23.sp,
+                            lineHeight = 27.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(status, color = Color(0xFFB5B7CA), fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "CONVERSATION",
+                    color = Color(0xFF8F93AA),
+                    fontSize = 11.sp,
+                    letterSpacing = 1.6.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp)
+                ) {
+                    items(messages) { message ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = if (message.fromNova) Arrangement.Start else Arrangement.End
+                        ) {
+                            Column(
+                                Modifier.widthIn(max = 310.dp)
+                                    .background(
+                                        if (message.fromNova) Color(0xFF171B2B) else Color(0xFF37305D),
+                                        RoundedCornerShape(18.dp)
+                                    ).padding(13.dp)
+                            ) {
+                                Text(
+                                    if (message.fromNova) "NOVA" else "YOU",
+                                    color = if (message.fromNova) Color(0xFF67E8D2) else Color(0xFFC9C0FF),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                Text(message.text, color = Color(0xFFF2F2F8), fontSize = 14.sp, lineHeight = 20.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
