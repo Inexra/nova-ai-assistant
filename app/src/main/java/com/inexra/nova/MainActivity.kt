@@ -105,6 +105,16 @@ private fun NovaScreen(
     }
     var recognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
 
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        status = if (result.values.any { it }) {
+            "Location permission granted · ask Nova for the weather again"
+        } else {
+            "Location permission denied · enable it in Android Settings to get local weather"
+        }
+    }
+
     fun respond(raw: String) {
         val text = raw.trim()
         if (text.isEmpty()) return
@@ -283,16 +293,6 @@ private fun NovaScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         status = if (granted) "Microphone permission granted · tap mic again to speak" else "Microphone permission denied"
-    }
-
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        status = if (result.values.any { it }) {
-            "Location permission granted · ask Nova for the weather again"
-        } else {
-            "Location permission denied · enable it in Android Settings to get local weather"
-        }
     }
 
     DisposableEffect(Unit) {
