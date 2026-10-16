@@ -369,8 +369,20 @@ private fun NovaScreen(
                                 }
                             )
                         }
+                        TextButton(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                }.onFailure {
+                                    status = "Open Android Settings > Apps > Nova > Battery and choose Unrestricted if available."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Open battery optimization settings")
+                        }
                         Text(
-                            "Important: this keeps the service alive, but Hey Nova wake-word detection is not implemented yet. It does not unlock the phone or bypass Android force-stop/battery restrictions.",
+                            "For best persistence, allow background activity / unrestricted battery use for Nova if your phone offers it. Android can still stop apps after Force stop. Hey Nova wake-word detection needs its own offline model and is not enabled in this build.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
