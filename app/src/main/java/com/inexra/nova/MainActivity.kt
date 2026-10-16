@@ -92,6 +92,10 @@ private fun NovaScreen(
     var backgroundMode by remember {
         mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getBoolean("background_mode", false))
     }
+    var geminiApiKey by remember {
+        mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getString("gemini_api_key", "") ?: "")
+    }
+    var geminiApiKeyDraft by remember { mutableStateOf(geminiApiKey) }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -120,6 +124,7 @@ private fun NovaScreen(
         if (text.isEmpty()) return
         messages = messages + ChatMessage(text, false)
         val lower = text.lowercase(Locale.ROOT)
+        var asyncAiRequest = false
         val answer = when {
             lower.contains("weather") || lower.contains("forecast") || lower.contains("temperature outside") -> {
                 val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -248,39 +253,42 @@ private fun NovaScreen(
                     lower.startsWith("search for ") -> text.substring(11).trim()
                     else -> text.substring(7).trim()
                 }
-                val opened = query.isNotBlank() && runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess
-                if (opened) "Opening Google results for: $query. In-app summaries are a future upgrade."
-                else "I couldn't open Google Search."
+                asyncAiRequest = query.isNotBlank()
+                if (asyncAiRequest) {
+                    NovaAiClient.searchAndAnswer(query, geminiApiKey) { result ->
+                        messages = messages + ChatMessage(result, true)
+                        status = "Web search and AI response complete"
+                        onSpeak(result)
+                    }
+                    "Searching the web and preparing your answer…"
+                } else "Tell me what you'd like me to search for."
             }
             lower.startsWith("what is ") || lower.startsWith("who is ") ||
                 lower.startsWith("when is ") || lower.startsWith("where is ") ||
                 lower.startsWith("why ") || lower.startsWith("how ") ||
                 lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
-                val opened = runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(text)))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess
-                if (opened) "I'll look that up on Google. Results open in your browser; Nova doesn't yet read and summarize pages inside the app."
-                else "I couldn't open a browser to search that question."
+                asyncAiRequest = true
+                NovaAiClient.searchAndAnswer(text, geminiApiKey) { result ->
+                    messages = messages + ChatMessage(result, true)
+                    status = "Web search and AI response complete"
+                    onSpeak(result)
+                }
+                "Searching the web and preparing your answer…"
             }
             lower == "help" || lower.contains("what can you do") ->
                 "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. The offline AI model and in-app web summaries are still being built."
             else -> {
-                // Treat ordinary, unrecognized messages as a search request.
-                // Users should not need to say "search Google for" first.
+                // Search ordinary messages automatically; no "search Google" prefix needed.
                 val query = text.trim()
-                val opened = query.isNotBlank() && runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess
-                if (opened) "Looking up: $query. Search results are open in your browser. In-app answers will come with Nova's AI brain."
-                else "I couldn't open a browser to look that up. Please check that a browser is installed."
+                asyncAiRequest = query.isNotBlank()
+                if (asyncAiRequest) {
+                    NovaAiClient.searchAndAnswer(query, geminiApiKey) { result ->
+                        messages = messages + ChatMessage(result, true)
+                        status = "Web search and AI response complete"
+                        onSpeak(result)
+                    }
+                    "Searching the web and preparing your answer…"
+                } else "Please type or say something for me to help with."
             }
         }
         messages = messages + ChatMessage(answer, true)
