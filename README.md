@@ -6,7 +6,7 @@ Nova is a Kotlin Android assistant focused on on-device privacy, voice interacti
 
 - Native Android chat interface with speech input and text-to-speech replies.
 - Optional “Hey Nova” listener using Android's on-device speech recognizer when the device has an offline speech pack. This is a speech-recognition-based fallback, not a dedicated low-power keyword model.
-- Optional downloadable Qwen2.5 0.5B Instruct GGUF model (about 491 MB). Download it once in Settings; afterward, offline AI answers run on the phone CPU without sending prompts to a server. The model is not bundled in the APK.
+- Qwen2.5 0.5B Instruct GGUF model bundled inside the APK. The first local AI request copies the included model into Nova's private app storage; no separate model download is required.
 - Optional Gemini API key in Settings for online AI summaries.
 - In-app web search results; explicit web searches and current-news requests use the internet.
 - Local on-device memory: say “remember that …”, “what do you remember”, or “forget all memories”.
@@ -18,26 +18,27 @@ Nova is a Kotlin Android assistant focused on on-device privacy, voice interacti
 
 ## Offline AI setup
 
-1. Install Nova and open **Settings**.
-2. Download the optional offline model (roughly 491 MB). Use a stable connection and keep enough free storage.
-3. Turn on **Use offline AI for ordinary questions**.
+1. Download and install the Nova APK that includes Qwen.
+2. Open Nova and enable **Use offline AI for ordinary questions** in Settings.
+3. The first local question copies the model from the APK to app-private storage, so allow some time and keep at least 1 GB of free storage available.
 4. Ordinary questions then use the local model. Explicit web searches, latest-news requests, and weather lookup still need internet. The small model is less capable than a larger cloud model and may be slower on some phones.
 
-The model weights are provided by the Qwen2.5-0.5B-Instruct-GGUF project; check the model repository's license and terms before redistributing model files. The model is downloaded on demand and is not packaged inside Nova's APK.
+The Qwen2.5-0.5B-Instruct-GGUF model is obtained from the upstream [Qwen model repository](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF). The model has its own license and terms, separate from Nova's MIT source license; review the upstream license before redistributing.
 
 ## Important Android limitations
 
+- The APK is much larger because it includes the model (roughly 500 MB or more). Android installation also needs extra free space while copying the model into app-private storage.
 - Android may block background activity launches. After saying “Hey Nova”, Nova may show a notification to tap rather than open itself automatically.
 - A microphone foreground service is visible in notifications, consumes battery, and may be stopped by Android or the phone manufacturer. Force-stop cannot be bypassed.
 - On-device speech recognition requires a supported Android version and a downloaded offline language pack. The listener can be less reliable and less power-efficient than a dedicated keyword model.
 - Nova cannot bypass a secure lock screen, PIN, password, biometrics, or Android permission prompts.
 - Android restricts direct control of some system toggles. Nova opens the relevant system panel when direct changes are not allowed.
-- Voice recognition may use a network-backed system service when on-device recognition is unavailable for the manually started microphone button; the dedicated wake listener explicitly requires on-device recognition.
+- Manual microphone and wake-phrase voice recognition require an on-device recognizer; install an offline speech pack if needed.
 - Web search and Gemini require internet. Gemini requires the user's own API key.
 
 ## Build APK
 
-Open **Actions → Build Nova APK** and download the `nova-debug-apk` artifact from a successful workflow run. APK size will grow when the native inference library is included; the 491 MB model is downloaded separately.
+Open **Actions → Build Nova APK** and download the **nova-debug-apk-with-qwen-model** artifact from a successful workflow run. The model is downloaded by the build workflow and included inside the APK; it is not committed to the source repository.
 
 ## License
 
