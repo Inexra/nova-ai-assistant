@@ -442,9 +442,9 @@ private fun NovaScreen(
             lower.startsWith("what is ") || lower.startsWith("who is ") ||
                 lower.startsWith("when is ") || lower.startsWith("where is ") ||
                 lower.startsWith("why ") || lower.startsWith("how ") ||
-                lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
+                lower.endsWith("?") || lower.startsWith("latest") || lower.startsWith("news") || lower.contains(" latest") || lower.contains(" news") -> {
                 asyncAiRequest = true
-                if (offlineAiMode && !lower.contains(" latest ") && !lower.contains(" news ") && !lower.startsWith("when is the next")) {
+                if (offlineAiMode && !lower.startsWith("latest") && !lower.startsWith("news") && !lower.contains(" latest") && !lower.contains(" news") && !lower.startsWith("when is the next")) {
                     asyncOfflineRequest = true
                     askOffline(text)
                     "Thinking with your downloaded offline AI model…"
