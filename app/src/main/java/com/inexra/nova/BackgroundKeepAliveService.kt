@@ -53,8 +53,7 @@ class BackgroundKeepAliveService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        getSharedPreferences("nova_settings", MODE_PRIVATE).edit()
-            .putBoolean("background_mode", false).apply()
+        // Keep the preference so Android can recreate a sticky service.
         super.onDestroy()
     }
 
