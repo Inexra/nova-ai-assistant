@@ -89,6 +89,9 @@ private fun NovaScreen(
     var listening by remember { mutableStateOf(false) }
     var showNovaSettings by remember { mutableStateOf(false) }
     var lockScreenAccess by remember { mutableStateOf(initialLockScreenAccess) }
+    var backgroundMode by remember {
+        mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getBoolean("background_mode", false))
+    }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -330,8 +333,44 @@ private fun NovaScreen(
                                 }
                             )
                         }
+                        Divider(color = Color(0xFF30364A))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Keep Nova available in background", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Keeps a small foreground service running after you leave or swipe away from Nova. A persistent notification will be shown.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = backgroundMode,
+                                onCheckedChange = { enabled ->
+                                    backgroundMode = enabled
+                                    context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                                        .edit().putBoolean("background_mode", enabled).apply()
+                                    val serviceIntent = Intent(context, BackgroundKeepAliveService::class.java)
+                                    if (enabled) {
+                                        runCatching {
+                                            androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+                                        }.onFailure {
+                                            backgroundMode = false
+                                            context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                                                .edit().putBoolean("background_mode", false).apply()
+                                            status = "Android could not start background mode. Open Nova and try again."
+                                        }
+                                    } else {
+                                        context.stopService(serviceIntent)
+                                        status = "Nova background mode stopped"
+                                    }
+                                }
+                            )
+                        }
                         Text(
-                            "This setting does not bypass the lock or enable always-on Hey Nova listening. Android may still restrict actions until you unlock.",
+                            "Important: this keeps the service alive, but Hey Nova wake-word detection is not implemented yet. It does not unlock the phone or bypass Android force-stop/battery restrictions.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
