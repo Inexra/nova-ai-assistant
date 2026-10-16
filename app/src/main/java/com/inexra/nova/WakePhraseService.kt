@@ -52,7 +52,8 @@ class WakePhraseService : Service() {
     private fun beginListening() {
         if (listening) return
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
-            updateNotification("On-device speech recognition unavailable. Install an offline speech pack and restart wake phrase.")
+            getSharedPreferences("nova_settings", MODE_PRIVATE).edit().putBoolean("wake_phrase_mode", false).apply()
+            updateNotification("On-device speech recognition unavailable. Install an offline speech pack and enable wake phrase again.")
             stopSelf()
             return
         }
@@ -75,12 +76,13 @@ class WakePhraseService : Service() {
                     val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()?.lowercase(Locale.ROOT).orEmpty()
                     val now = System.currentTimeMillis()
-                    if (Regex("""\bhey\s+nova\b""").containsMatchIn(heard) && now - lastActivationAt > 5000L) {
+                    val activated = Regex("""\bhey\s+nova\b""").containsMatchIn(heard) && now - lastActivationAt > 5000L
+                    if (activated) {
                         lastActivationAt = now
                         openNova()
-                        updateNotification("Hey Nova detected · Nova opened · listening remains enabled")
+                        updateNotification("Hey Nova detected · listening pauses briefly while you speak")
                     }
-                    handler.postDelayed({ beginListening() }, 350L)
+                    handler.postDelayed({ beginListening() }, if (activated) 10000L else 350L)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {}
                 override fun onEvent(eventType: Int, params: Bundle?) {}
