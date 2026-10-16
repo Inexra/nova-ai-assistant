@@ -36,10 +36,11 @@ class WakePhraseService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            getSharedPreferences("nova_settings", MODE_PRIVATE).edit().putBoolean("wake_phrase_mode", false).apply()
             stopSelf()
             return START_NOT_STICKY
         }
-        val notification = buildNotification("Offline wake phrase enabled · say “Hey Nova”")
+        val notification = buildNotification("On-device wake listener starting · say “Hey Nova”")
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
