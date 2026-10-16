@@ -321,6 +321,30 @@ private fun NovaScreen(
                 title = { Text("Nova settings") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("AI answers & web search", fontWeight = FontWeight.SemiBold)
+                        OutlinedTextField(
+                            value = geminiApiKeyDraft,
+                            onValueChange = { geminiApiKeyDraft = it },
+                            label = { Text("Gemini API key (optional)") },
+                            placeholder = { Text("Paste your own key") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "With a key, Nova searches the web and asks Gemini to summarize results inside the app. Without a key, Nova shows web results. Requests use the internet; your key is stored in Nova's private app preferences.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                        TextButton(
+                            onClick = {
+                                geminiApiKey = geminiApiKeyDraft.trim()
+                                context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                                    .edit().putString("gemini_api_key", geminiApiKey).apply()
+                                status = if (geminiApiKey.isBlank()) "Gemini key cleared" else "Gemini API key saved on this device"
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Save Gemini API key") }
+                        Divider(color = Color(0xFF30364A))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
