@@ -192,6 +192,7 @@ private fun NovaScreen(
         messages = messages + ChatMessage(text, false)
         val lower = text.lowercase(Locale.ROOT)
         var asyncAiRequest = false
+        var asyncOfflineRequest = false
         val answer = when {
             lower.startsWith("remember that ") || lower.startsWith("remember ") -> {
                 val fact = text.substringAfter("remember").trim().removePrefix("that").trim().trimEnd('.', '!')
@@ -239,12 +240,12 @@ private fun NovaScreen(
                             locationManager.getCurrentLocation(provider, null, context.mainExecutor) { location ->
                                 if (location != null) {
                                     val query = "weather near ${location.latitude},${location.longitude} today"
-                                    val opened = runCatching {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                    }.isSuccess
-                                    status = if (opened) "Opened local weather using your phone's location" else "Couldn't open weather results"
+                                    status = "Searching current local weather…"
+                                    NovaAiClient.searchAndAnswer(query, geminiApiKey) { result ->
+                                        messages = messages + ChatMessage(result, true)
+                                        status = "Local weather results ready"
+                                        onSpeak(result)
+                                    }
                                 } else {
                                     status = "Couldn't get a location fix · check that Location is enabled"
                                     onSpeak("I couldn't get your location. Please check that Location is enabled and try again.")
@@ -428,6 +429,7 @@ private fun NovaScreen(
                 lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
                 asyncAiRequest = true
                 if (offlineAiMode && !lower.contains(" latest ") && !lower.contains(" news ") && !lower.startsWith("when is the next")) {
+                    asyncOfflineRequest = true
                     askOffline(text)
                     "Thinking with your downloaded offline AI model…"
                 } else {
@@ -440,12 +442,13 @@ private fun NovaScreen(
                 }
             }
             lower == "help" || lower.contains("what can you do") ->
-                "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. Web search and Gemini summaries are available when connected; Gemini requires your own API key. Hey Nova listening requires an on-device speech-recognition pack."
+                "Try: 'open YouTube' (or any installed app by its displayed name), 'turn flashlight on', 'volume up', 'open Wi-Fi settings', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', 'remember that I prefer short answers', 'what do you remember', or 'search Google for space news'. Calls still require confirmation in the dialer. Enable Offline AI and download its model in Settings for private local answers. Web search and Gemini summaries require internet; Gemini needs your own API key."
             else -> {
                 val query = text.trim()
                 asyncAiRequest = query.isNotBlank()
                 if (!asyncAiRequest) "Please type or say something for me to help with."
                 else if (offlineAiMode) {
+                    asyncOfflineRequest = true
                     askOffline(query)
                     "Thinking with your downloaded offline AI model…"
                 } else {
@@ -459,7 +462,11 @@ private fun NovaScreen(
             }
         }
         messages = messages + ChatMessage(answer, true)
-        status = if (asyncAiRequest) "Searching the web · waiting for results" else "Ready · commands run on device; web/AI uses internet"
+        status = when {
+            asyncOfflineRequest -> "Thinking locally · no network used"
+            asyncAiRequest -> "Searching the web · waiting for results"
+            else -> "Ready · commands run on device; web/AI uses internet"
+        }
         onSpeak(answer)
         input = ""
     }
