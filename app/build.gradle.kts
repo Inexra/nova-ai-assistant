@@ -14,6 +14,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    androidResources {
+        // Keep the large GGUF asset uncompressed inside the APK; it is already quantized.
+        noCompress += "gguf"
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
