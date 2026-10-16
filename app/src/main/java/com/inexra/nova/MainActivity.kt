@@ -133,6 +133,12 @@ private fun NovaScreen(
         }
     }
 
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        status = if (granted) "Camera permission granted · repeat your flashlight command" else "Camera permission denied · flashlight control unavailable"
+    }
+
     val wakePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -286,6 +292,24 @@ private fun NovaScreen(
                 }.isSuccess
                 if (opened) "Opening the Clock app to set an alarm. Choose the time and confirm it there."
                 else "I couldn't open an alarm app."
+            }
+            lower.contains("flashlight") || lower.contains("torch") -> {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    "Camera permission is needed to control the flashlight. Grant it, then repeat the command."
+                } else {
+                    val turnOn = !(lower.contains("off") || lower.contains("disable") || lower.contains("turn off"))
+                    runCatching {
+                        val cameraManager = context.getSystemService(android.content.Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                        val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
+                            cameraManager.getCameraCharacteristics(id).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                        } ?: throw IllegalStateException("No flashlight found on this device")
+                        cameraManager.setTorchMode(cameraId, turnOn)
+                    }.fold(
+                        onSuccess = { if (turnOn) "Flashlight turned on." else "Flashlight turned off." },
+                        onFailure = { "I couldn't control the flashlight: ${it.message ?: "device error"}" }
+                    )
+                }
             }
             lower.contains("volume up") || lower.contains("increase volume") || lower.contains("turn volume up") -> {
                 val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
