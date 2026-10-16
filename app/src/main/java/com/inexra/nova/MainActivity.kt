@@ -830,12 +830,12 @@ private fun NovaScreen(
                                     val sr = if (onDeviceAvailable) {
                                         SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
                                     } else {
-                                        SpeechRecognizer.createSpeechRecognizer(context)
+                                        throw IllegalStateException("On-device speech recognition is unavailable. Install an offline speech pack.")
                                     }
                                     recognizer = sr
                                     sr.setRecognitionListener(object : RecognitionListener {
                                         override fun onReadyForSpeech(params: Bundle?) {
-                                            status = if (onDeviceAvailable) "Listening · on-device recognizer" else "Listening · OS recognizer may use network"
+                                            status = "Listening · on-device recognizer"
                                         }
                                         override fun onBeginningOfSpeech() { listening = true }
                                         override fun onRmsChanged(rmsdB: Float) {}
