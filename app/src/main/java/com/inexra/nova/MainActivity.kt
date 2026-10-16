@@ -508,6 +508,65 @@ private fun NovaScreen(
                 title = { Text("Nova settings") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("On-device AI model", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Optional Qwen 0.5B model · about 491 MB download. After downloading once, ordinary questions can be answered on this phone without internet or an API key. It uses CPU and memory, and answers may be less capable than cloud AI.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                        Text(modelDownloadStatus, style = MaterialTheme.typography.bodySmall, color = Color(0xFF67E8D2))
+                        if (!localModelAvailable) {
+                            TextButton(
+                                onClick = {
+                                    modelDownloadStatus = "Starting model download… keep Nova open and use a stable Wi-Fi connection."
+                                    LocalLlmClient.downloadModel(
+                                        context,
+                                        onProgress = { downloaded, total ->
+                                            val downloadedMb = downloaded / (1024 * 1024)
+                                            val totalText = if (total > 0) " / ${total / (1024 * 1024)} MB" else ""
+                                            modelDownloadStatus = "Downloading offline AI: $downloadedMb MB$totalText"
+                                        },
+                                        onComplete = { result ->
+                                            result.fold(
+                                                onSuccess = {
+                                                    localModelAvailable = true
+                                                    modelDownloadStatus = "Offline model installed · ready to use"
+                                                    status = "Offline AI model ready"
+                                                },
+                                                onFailure = {
+                                                    modelDownloadStatus = "Download failed: ${it.message ?: "network error"}. Tap to retry."
+                                                }
+                                            )
+                                        }
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Download offline AI model (~491 MB)") }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Use offline AI for ordinary questions", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (localModelAvailable) "When enabled, ordinary questions use the downloaded model. Explicit web searches and latest-news questions still use the internet." else "Download the model first to enable offline answers.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = offlineAiMode,
+                                enabled = localModelAvailable,
+                                onCheckedChange = { enabled ->
+                                    offlineAiMode = enabled
+                                    context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                                        .edit().putBoolean("offline_ai_mode", enabled).apply()
+                                    status = if (enabled) "Offline AI mode enabled" else "Online search mode enabled"
+                                }
+                            )
+                        }
+                        Divider(color = Color(0xFF30364A))
                         Text("AI answers & web search", fontWeight = FontWeight.SemiBold)
                         OutlinedTextField(
                             value = geminiApiKeyDraft,
@@ -650,7 +709,7 @@ private fun NovaScreen(
                             Text("Open battery optimization settings")
                         }
                         Text(
-                            "For best persistence, allow background activity / unrestricted battery use for Nova if your phone offers it. Android can still stop apps after Force stop. Hey Nova wake-word detection needs its own offline model and is not enabled in this build.",
+                            "For best persistence, allow background activity / unrestricted battery use for Nova if your phone offers it. Android can still stop apps after Force stop. The Hey Nova listener uses on-device speech recognition when an offline recognizer is available; a dedicated keyword model is not bundled.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
