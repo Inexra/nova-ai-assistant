@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -104,7 +107,7 @@ private fun NovaScreen(
         mutableStateOf(
             listOf(
                 ChatMessage(
-                    "Hey! I'm Nova. This first build can speak replies and try on-device voice input. My local AI brain and always-on wake phrase are still being built.",
+                    "Hey! I'm Nova. I can run phone commands, search the web in-app, and use your optional Gemini key for AI summaries. Enable Hey Nova listening in Settings to try on-device wake detection.",
                     true
                 )
             )
@@ -301,7 +304,7 @@ private fun NovaScreen(
                 "Searching the web and preparing your answer…"
             }
             lower == "help" || lower.contains("what can you do") ->
-                "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. The offline AI model and in-app web summaries are still being built."
+                "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. Web search and Gemini summaries are available when connected; Gemini requires your own API key. Hey Nova listening requires an on-device speech-recognition pack."
             else -> {
                 // Search ordinary messages automatically; no "search Google" prefix needed.
                 val query = text.trim()
@@ -317,7 +320,7 @@ private fun NovaScreen(
             }
         }
         messages = messages + ChatMessage(answer, true)
-        status = "Ready · response generated on device"
+        status = if (asyncAiRequest) "Searching the web · waiting for results" else "Ready · commands run on device; web/AI uses internet"
         onSpeak(answer)
         input = ""
     }
@@ -353,6 +356,7 @@ private fun NovaScreen(
                             label = { Text("Gemini API key (optional)") },
                             placeholder = { Text("Paste your own key") },
                             singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
