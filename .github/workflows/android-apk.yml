@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android debug APK
+    name: Build Android APK with bundled Qwen model
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -27,6 +27,16 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Download Qwen2.5 0.5B model into APK assets
+        run: |
+          mkdir -p app/src/main/assets
+          MODEL="app/src/main/assets/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 \
+            --output "$MODEL" \
+            "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          SIZE=$(stat -c%s "$MODEL")
+          echo "Downloaded model: $SIZE bytes"
+          test "$SIZE" -gt 100000000
       - name: Install Android platform and build tools
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -41,10 +51,12 @@ jobs:
           gradle-version: 8.9
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
+      - name: Report APK size
+        run: du -h app/build/outputs/apk/debug/app-debug.apk
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nova-debug-apk
+          name: nova-debug-apk-with-qwen-model
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
