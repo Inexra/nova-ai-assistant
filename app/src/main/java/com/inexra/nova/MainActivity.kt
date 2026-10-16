@@ -96,6 +96,9 @@ private fun NovaScreen(
         mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getString("gemini_api_key", "") ?: "")
     }
     var geminiApiKeyDraft by remember { mutableStateOf(geminiApiKey) }
+    var wakePhraseMode by remember {
+        mutableStateOf(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getBoolean("wake_phrase_mode", false))
+    }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -116,6 +119,28 @@ private fun NovaScreen(
             "Location permission granted · ask Nova for the weather again"
         } else {
             "Location permission denied · enable it in Android Settings to get local weather"
+        }
+    }
+
+    val wakePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val prefs = context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("wake_phrase_mode", true).apply()
+            wakePhraseMode = true
+            runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    context, Intent(context, WakePhraseService::class.java)
+                )
+            }.onFailure {
+                wakePhraseMode = false
+                prefs.edit().putBoolean("wake_phrase_mode", false).apply()
+                status = "Android couldn't start the wake listener. Open Nova and try again."
+            }
+        } else {
+            wakePhraseMode = false
+            status = "Microphone permission is required for Hey Nova listening"
         }
     }
 
@@ -344,6 +369,54 @@ private fun NovaScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Save Gemini API key") }
+                        Divider(color = Color(0xFF30364A))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Hey Nova wake phrase", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "When enabled, Nova uses Android's on-device speech recognizer to listen for “Hey Nova” and open the app. No cloud recognizer fallback is used. It can use more battery than a dedicated wake-word model.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = wakePhraseMode,
+                                onCheckedChange = { enabled ->
+                                    val prefs = context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
+                                    if (enabled) {
+                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                            runCatching {
+                                                androidx.core.content.ContextCompat.startForegroundService(
+                                                    context, Intent(context, WakePhraseService::class.java)
+                                                )
+                                                wakePhraseMode = true
+                                                prefs.edit().putBoolean("wake_phrase_mode", true).apply()
+                                                status = "Hey Nova listening started · on-device recognition only"
+                                            }.onFailure {
+                                                wakePhraseMode = false
+                                                prefs.edit().putBoolean("wake_phrase_mode", false).apply()
+                                                status = "Couldn't start wake phrase listener. Check microphone permission and try again."
+                                            }
+                                        } else {
+                                            wakePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    } else {
+                                        wakePhraseMode = false
+                                        prefs.edit().putBoolean("wake_phrase_mode", false).apply()
+                                        context.stopService(Intent(context, WakePhraseService::class.java))
+                                        status = "Hey Nova wake phrase stopped"
+                                    }
+                                }
+                            )
+                        }
+                        Text(
+                            "Android may require the wake listener to be enabled again after a reboot or force-stop. A dedicated Hey Nova neural model is not bundled because a free downloadable English model for that exact phrase is not available in the public model set; this fallback uses on-device speech recognition and is less efficient.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
                         Divider(color = Color(0xFF30364A))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
