@@ -335,6 +335,55 @@ private fun NovaScreen(
         onDispose { recognizer?.destroy() }
     }
 
+    LaunchedEffect(Unit) {
+        val activity = context as? android.app.Activity
+        if (activity?.intent?.getBooleanExtra("nova_wake_detected", false) == true) {
+            activity.intent.removeExtra("nova_wake_detected")
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+                SpeechRecognizer.isRecognitionAvailable(context)) {
+                val offlineAvailable = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+                if (offlineAvailable) {
+                    runCatching {
+                        recognizer?.destroy()
+                        val sr = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                        recognizer = sr
+                        sr.setRecognitionListener(object : RecognitionListener {
+                            override fun onReadyForSpeech(params: Bundle?) { status = "Hey Nova heard · listening for your command" }
+                            override fun onBeginningOfSpeech() { listening = true }
+                            override fun onRmsChanged(rmsdB: Float) {}
+                            override fun onBufferReceived(buffer: ByteArray?) {}
+                            override fun onEndOfSpeech() { listening = false }
+                            override fun onError(error: Int) {
+                                listening = false
+                                status = "Wake detected, but command listening ended · code $error"
+                            }
+                            override fun onResults(results: Bundle?) {
+                                listening = false
+                                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                                if (spoken != null) respond(spoken) else status = "Wake detected, but no command was recognized"
+                            }
+                            override fun onPartialResults(partialResults: Bundle?) {}
+                            override fun onEvent(eventType: Int, params: Bundle?) {}
+                        })
+                        val speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                        sr.startListening(speechIntent)
+                        listening = true
+                    }.onFailure {
+                        status = "Hey Nova heard · tap the microphone to give a command"
+                    }
+                } else {
+                    status = "Hey Nova heard · install an offline speech pack, then tap the microphone to speak"
+                }
+            } else {
+                status = "Hey Nova heard · tap the microphone to give a command"
+            }
+        }
+    }
+
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Color(0xFF9C8CFF),
