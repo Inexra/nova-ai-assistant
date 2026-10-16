@@ -50,7 +50,7 @@ class WakePhraseService : Service() {
     }
 
     private fun beginListening() {
-        if (listening || isDestroyed) return
+        if (listening) return
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
             updateNotification("On-device speech recognition unavailable. Install an offline speech pack and restart wake phrase.")
             stopSelf()
