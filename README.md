@@ -46,14 +46,28 @@ Explicit web searches, latest-news requests, and weather lookup still need inter
 
 The Qwen2.5-0.5B-Instruct-GGUF model is obtained from the upstream [Qwen model repository](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF). The model has its own license and terms, separate from Nova's MIT source license; review the upstream license before redistributing.
 
-## Important Android limitations
+## Wake phrase and background reliability
 
-- Android may block background activity launches. After saying “Hey Nova”, Nova may show a notification to tap rather than open itself automatically.
-- A microphone foreground service is visible in notifications, consumes battery, and may be stopped by Android or the phone manufacturer. Force-stop cannot be bypassed.
-- On-device speech recognition requires a supported Android version and a downloaded offline language pack. The listener can be less reliable and less power-efficient than a dedicated keyword model.
-- Nova cannot bypass a secure lock screen, PIN, password, biometrics, or Android permission prompts.
-- Android restricts direct control of some system toggles. Nova opens the relevant system panel when direct changes are not allowed.
-- Manual microphone and wake-phrase voice recognition require an on-device recognizer; install an offline speech pack if needed.
+Nova is configured to use Android's on-device speech recognizer, show a persistent foreground-service notification, and provide a tap-to-open notification when it hears “Hey Nova”. Android still owns background-launch, microphone, notification, and power-management policy, so an app cannot guarantee hands-free launching on every device.
+
+For the most reliable setup on Android 13+:
+
+1. Open Nova once and grant **Microphone** permission.
+2. Allow **Notifications** for Nova in Android Settings → Apps → Nova → Notifications. This is important for seeing the wake-detected tap-to-open notification.
+3. In Android Settings, search for **Speech recognition**, **Voice input**, or **Offline speech recognition** and download the language pack for your device's recognition service. Exact labels vary by Android version and installed speech provider.
+4. In Android Settings → Apps → Nova → Battery, choose **Unrestricted** or allow background activity if your phone offers that option. On Motorola phones, also check any battery optimization or background-app management options.
+5. Open Nova, enable **Hey Nova**, and leave its ongoing listener notification visible. Test it with the screen on first.
+6. If recognition stops after reboot, open Nova and enable the listener again. If Android has force-stopped Nova, launch it manually; no ordinary app can restart itself after a force-stop.
+
+## Android platform boundaries
+
+- **Automatic foreground launch:** Android may refuse to bring Nova to the front from the background. In that case, tap Nova's “Hey Nova detected” notification to open it. The app cannot override this OS security rule.
+- **Battery and process lifetime:** the microphone listener uses a foreground service and therefore has a persistent notification and battery cost. Battery optimization exclusions can improve persistence but cannot guarantee it; Android and device firmware may still stop it.
+- **Force-stop:** Android intentionally prevents apps from restarting themselves after Force stop. This cannot be fixed inside Nova without unsupported or privileged system access.
+- **Speech recognition:** wake detection currently uses Android's on-device speech recognizer, not a dedicated always-on keyword model. Offline recognition availability and accuracy depend on the device and downloaded language pack. A dedicated low-power keyword model would be a separate implementation and model-integration task.
+- **Secure lock screen:** Nova cannot bypass the PIN, password, biometrics, or Android permission prompts.
+- **System toggles:** Android restricts direct changes to some protected settings. Nova opens the corresponding system panel when direct control is unavailable.
+- **Notifications:** Nova declares the Android 13+ notification permission. If notifications are disabled, the tap-to-open fallback may not be visible; enable Nova notifications in system settings.
 
 ## Build APK (developers)
 
