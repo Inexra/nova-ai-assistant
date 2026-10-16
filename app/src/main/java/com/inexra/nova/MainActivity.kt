@@ -213,8 +213,18 @@ private fun NovaScreen(
             }
             lower == "help" || lower.contains("what can you do") ->
                 "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. The offline AI model and in-app web summaries are still being built."
-            else ->
-                "I don't have my AI language model connected yet. Try 'open YouTube', 'set a timer for 5 minutes', or 'search Google for $text'."
+            else -> {
+                // Treat ordinary, unrecognized messages as a search request.
+                // Users should not need to say "search Google for" first.
+                val query = text.trim()
+                val opened = query.isNotBlank() && runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "Looking up: $query. Search results are open in your browser. In-app answers will come with Nova's AI brain."
+                else "I couldn't open a browser to look that up. Please check that a browser is installed."
+            }
         }
         messages = messages + ChatMessage(answer, true)
         status = "Ready · response generated on device"
