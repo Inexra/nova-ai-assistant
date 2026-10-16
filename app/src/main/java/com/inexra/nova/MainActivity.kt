@@ -44,7 +44,22 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tts = TextToSpeech(this, this)
-        setContent { NovaScreen(onSpeak = { say(it) }) }
+        val lockScreenEnabled = getSharedPreferences("nova_settings", MODE_PRIVATE)
+            .getBoolean("lock_screen_access", false)
+        setShowWhenLocked(lockScreenEnabled)
+        setTurnScreenOn(lockScreenEnabled)
+        setContent {
+            NovaScreen(
+                initialLockScreenAccess = lockScreenEnabled,
+                onLockScreenAccessChanged = { enabled ->
+                    getSharedPreferences("nova_settings", MODE_PRIVATE).edit()
+                        .putBoolean("lock_screen_access", enabled).apply()
+                    setShowWhenLocked(enabled)
+                    setTurnScreenOn(enabled)
+                },
+                onSpeak = { say(it) }
+            )
+        }
     }
 
     override fun onInit(status: Int) {
@@ -64,10 +79,16 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NovaScreen(onSpeak: (String) -> Unit) {
+private fun NovaScreen(
+    initialLockScreenAccess: Boolean,
+    onLockScreenAccessChanged: (Boolean) -> Unit,
+    onSpeak: (String) -> Unit
+) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var listening by remember { mutableStateOf(false) }
+    var showNovaSettings by remember { mutableStateOf(false) }
+    var lockScreenAccess by remember { mutableStateOf(initialLockScreenAccess) }
     var status by remember { mutableStateOf("Ready · local-first foundation") }
     var messages by remember {
         mutableStateOf(
@@ -135,6 +156,52 @@ private fun NovaScreen(onSpeak: (String) -> Unit) {
             surface = Color(0xFF151927)
         )
     ) {
+        if (showNovaSettings) {
+            AlertDialog(
+                onDismissRequest = { showNovaSettings = false },
+                title = { Text("Nova settings") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Lock-screen access", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Allow Nova to appear over the lock screen when Android launches it. Your PIN, password, or biometrics are still required to unlock the phone.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = lockScreenAccess,
+                                onCheckedChange = {
+                                    lockScreenAccess = it
+                                    onLockScreenAccessChanged(it)
+                                }
+                            )
+                        }
+                        Text(
+                            "This setting does not bypass the lock or enable always-on Hey Nova listening. Android may still restrict actions until you unlock.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showNovaSettings = false }) { Text("Done") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        runCatching {
+                            context.startActivity(Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS))
+                        }
+                    }) { Text("Phone security") }
+                }
+            )
+        }
+
         Scaffold(
             containerColor = Color(0xFF090B12),
             topBar = {
@@ -151,11 +218,7 @@ private fun NovaScreen(onSpeak: (String) -> Unit) {
                         }
                     },
                     actions = {
-                        IconButton(onClick = {
-                            runCatching {
-                                context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
-                            }
-                        }) {
+                        IconButton(onClick = { showNovaSettings = true }) {
                             Icon(Icons.Default.Settings, contentDescription = "Android settings")
                         }
                     },
