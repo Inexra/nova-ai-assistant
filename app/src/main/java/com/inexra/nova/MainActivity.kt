@@ -348,7 +348,7 @@ private fun NovaScreen(
                 onDismissRequest = { showNovaSettings = false },
                 title = { Text("Nova settings") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("AI answers & web search", fontWeight = FontWeight.SemiBold)
                         OutlinedTextField(
                             value = geminiApiKeyDraft,
