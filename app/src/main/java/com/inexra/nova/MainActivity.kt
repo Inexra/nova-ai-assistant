@@ -207,13 +207,13 @@ private fun NovaScreen(
                     "I'll remember this on your phone: $fact"
                 }
             }
-            lower.contains("what do you remember") || lower == "show memories" -> {
+            lower.contains("what do you remember") || lower.contains("what did i ask you to remember") || lower == "show memories" -> {
                 val prefs = context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE)
                 val saved = runCatching { org.json.JSONArray(prefs.getString("nova_memories", "[]") ?: "[]") }.getOrElse { org.json.JSONArray() }
                 if (saved.length() == 0) "I don't have any saved memories yet. Say 'remember that …' to save one on this device."
                 else "Here's what I remember on this device:\n" + (0 until saved.length()).joinToString("\n") { "• " + saved.optString(it) }
             }
-            lower.startsWith("forget what you remember") || lower.startsWith("forget all memories") || lower == "forget everything" -> {
+            lower.startsWith("forget what you remember") || lower.startsWith("forget all memories") || lower.startsWith("forget everything") || lower.startsWith("clear memories") -> {
                 context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).edit().remove("nova_memories").apply()
                 "I've cleared Nova's saved memories on this device."
             }
@@ -269,7 +269,7 @@ private fun NovaScreen(
                 }.isSuccess
                 if (opened) "Opening Android Settings." else "I couldn't open Android Settings."
             }
-            lower.startsWith("set a timer for ") || lower.startsWith("timer for ") -> {
+            lower.startsWith("set a timer for ") || lower.startsWith("set timer for ") || lower.startsWith("start a timer for ") || lower.startsWith("timer for ") -> {
                 val phrase = text.substringAfter("for ").trim()
                 val number = Regex("\\d+").find(phrase)?.value?.toIntOrNull()
                 val seconds = when {
@@ -287,12 +287,27 @@ private fun NovaScreen(
                 if (opened) "Opening the Clock app to set a timer for $phrase. Confirm it there."
                 else "I couldn't open a timer app."
             }
-            lower.startsWith("set an alarm") || lower.startsWith("set alarm") -> {
-                val opened = runCatching {
-                    context.startActivity(Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess
-                if (opened) "Opening the Clock app to set an alarm. Choose the time and confirm it there."
+            lower.startsWith("set an alarm") || lower.startsWith("set alarm") || lower.startsWith("alarm for ") -> {
+                val timeMatch = Regex("""(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?""", RegexOption.IGNORE_CASE)
+                    .find(text.substringAfter("for ", text.substringAfter("alarm ", "")))
+                val hourRaw = timeMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val minute = timeMatch?.groupValues?.getOrNull(2)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+                val meridiem = timeMatch?.groupValues?.getOrNull(3).orEmpty().lowercase(Locale.ROOT)
+                val hour = if (hourRaw == null) null else when (meridiem) {
+                    "pm" -> if (hourRaw in 1..11) hourRaw + 12 else hourRaw
+                    "am" -> if (hourRaw == 12) 0 else hourRaw
+                    else -> hourRaw
+                }
+                val alarmIntent = Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
+                    .putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "Nova alarm")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (hour != null && hour in 0..23 && minute in 0..59) {
+                    alarmIntent.putExtra(android.provider.AlarmClock.EXTRA_HOUR, hour)
+                    alarmIntent.putExtra(android.provider.AlarmClock.EXTRA_MINUTES, minute)
+                }
+                val opened = runCatching { context.startActivity(alarmIntent) }.isSuccess
+                if (opened && hour != null) "Opening the Clock app with an alarm set for the requested time. Review and confirm it there."
+                else if (opened) "Opening the Clock app to set an alarm. Choose the time and confirm it there."
                 else "I couldn't open an alarm app."
             }
             lower.contains("flashlight") || lower.contains("torch") -> {
