@@ -158,7 +158,12 @@ private fun NovaScreen(
     fun askOffline(query: String) {
         scope.launch {
             status = "Thinking locally · your prompt stays on this phone"
-            val result = runCatching { LocalLlmClient.answer(context, query) }
+            val savedMemories = runCatching {
+                val array = org.json.JSONArray(context.getSharedPreferences("nova_settings", android.content.Context.MODE_PRIVATE).getString("nova_memories", "[]") ?: "[]")
+                (0 until array.length()).joinToString("\n") { array.optString(it) }
+            }.getOrDefault("")
+            val prompt = if (savedMemories.isBlank()) query else "Facts the user asked Nova to remember:\n$savedMemories\n\nUser's current message: $query"
+            val result = runCatching { LocalLlmClient.answer(context, prompt) }
             result.fold(
                 onSuccess = {
                     messages = messages + ChatMessage(it, true)
