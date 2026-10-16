@@ -21,7 +21,7 @@ object NovaAiClient {
             val results = runCatching { searchWeb(query) }.getOrDefault(emptyList())
             val response = if (apiKey.isNotBlank()) {
                 runCatching { askGemini(query, apiKey, results) }.getOrElse { error ->
-                    if (results.isNotEmpty()) formatResults(results, "AI answer unavailable (\${error.message ?: "network error"}). Search results:")
+                    if (results.isNotEmpty()) formatResults(results, "AI answer unavailable (${error.message ?: "network error"}). Search results:")
                     else "I couldn't reach Gemini or the web. Check your internet connection and API key, then try again."
                 }
             } else {
@@ -65,7 +65,7 @@ object NovaAiClient {
         val context = if (results.isEmpty()) {
             "No web results were retrieved. Answer from your general knowledge and clearly say if uncertain."
         } else {
-            results.joinToString("\n\n") { "Title: \${it.title}\nSnippet: \${it.snippet}\nURL: \${it.url}" }
+            results.joinToString("\n\n") { "Title: ${it.title}\nSnippet: ${it.snippet}\nURL: ${it.url}" }
         }
         val prompt = "You are Nova, a concise phone assistant. Answer the user's question clearly. Use the web search snippets below for current facts, distinguish facts from uncertainty, and do not invent citations. If useful, include source URLs.\n\nUser question: $query\n\nWeb results:\n$context"
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
@@ -101,7 +101,7 @@ object NovaAiClient {
 
     private fun formatResults(results: List<SearchResult>, intro: String): String =
         intro + "\n\n" + results.take(5).joinToString("\n\n") {
-            "\${it.title}\n\${it.snippet}\n\${it.url}"
+            "${it.title}\n${it.snippet}\n${it.url}"
         }
 
     @Suppress("DEPRECATION")
