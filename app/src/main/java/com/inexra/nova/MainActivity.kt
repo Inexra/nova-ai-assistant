@@ -109,12 +109,57 @@ private fun NovaScreen(
         val lower = text.lowercase(Locale.ROOT)
         val answer = when {
             lower in listOf("hi", "hello", "hey", "hey nova") ->
-                "Hey! I'm here. Ask a question, say 'search Google for ...', or ask me to open an app."
+                "Hey! I'm Nova. Ask me to open an app, search Google, set a timer, set an alarm, or find directions."
             lower == "settings" || lower == "open settings" || lower == "phone settings" -> {
                 val opened = runCatching {
                     context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
                 if (opened) "Opening Android Settings." else "I couldn't open Android Settings."
+            }
+            lower.startsWith("set a timer for ") || lower.startsWith("timer for ") -> {
+                val phrase = text.substringAfter("for ").trim()
+                val number = Regex("\\d+").find(phrase)?.value?.toIntOrNull()
+                val seconds = when {
+                    "hour" in phrase.lowercase(Locale.ROOT) -> (number ?: 1) * 3600
+                    "minute" in phrase.lowercase(Locale.ROOT) -> (number ?: 1) * 60
+                    else -> number ?: 60
+                }
+                val opened = runCatching {
+                    context.startActivity(Intent(android.provider.AlarmClock.ACTION_SET_TIMER)
+                        .putExtra(android.provider.AlarmClock.EXTRA_LENGTH, seconds.coerceIn(1, 86400))
+                        .putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "Nova timer")
+                        .putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, false)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "Opening the Clock app to set a timer for $phrase. Confirm it there."
+                else "I couldn't open a timer app."
+            }
+            lower.startsWith("set an alarm") || lower.startsWith("set alarm") -> {
+                val opened = runCatching {
+                    context.startActivity(Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "Opening the Clock app to set an alarm. Choose the time and confirm it there."
+                else "I couldn't open an alarm app."
+            }
+            lower.startsWith("call ") || lower.startsWith("dial ") -> {
+                val number = text.substringAfter(" ").trim().filter { it.isDigit() || it == '+' }
+                val opened = number.isNotBlank() && runCatching {
+                    context.startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:$number"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.isSuccess
+                if (opened) "The dialer is open with that number. Review it and place the call yourself."
+                else "I couldn't open the dialer. Try saying 'call' followed by a phone number."
+            }
+            lower.startsWith("directions to ") || lower.startsWith("navigate to ") || lower.startsWith("take me to ") -> {
+                val destination = text.substringAfter(" to ").trim()
+                val mapIntent = Intent(Intent.ACTION_VIEW,
+                    android.net.Uri.parse("google.navigation:q=" + android.net.Uri.encode(destination)))
+                    .setPackage("com.google.android.apps.maps")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val opened = destination.isNotBlank() && runCatching { context.startActivity(mapIntent) }.isSuccess
+                if (opened) "Opening Google Maps directions to $destination."
+                else "I couldn't open Google Maps. Try 'open Maps' first or install a maps app."
             }
             lower.startsWith("open ") -> {
                 val name = text.substringAfter("open ").trim()
@@ -138,7 +183,7 @@ private fun NovaScreen(
                     context.startActivity(appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
                 if (opened) "Opening $name."
-                else "I couldn't open $name. It may not be installed, or Android may use a different app package on this phone."
+                else "I couldn't open $name. It may not be installed, or this phone may use a different app package."
             }
             lower.startsWith("search google for ") || lower.startsWith("search for ") || lower.startsWith("google ") -> {
                 val query = when {
@@ -147,12 +192,11 @@ private fun NovaScreen(
                     else -> text.substring(7).trim()
                 }
                 val opened = query.isNotBlank() && runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
+                    context.startActivity(Intent(Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
-                if (opened) "Opening Google results for: $query. I'll add in-app summaries in a later update."
+                if (opened) "Opening Google results for: $query. In-app summaries are a future upgrade."
                 else "I couldn't open Google Search."
             }
             lower.startsWith("what is ") || lower.startsWith("who is ") ||
@@ -160,18 +204,17 @@ private fun NovaScreen(
                 lower.startsWith("why ") || lower.startsWith("how ") ||
                 lower.endsWith("?") || lower.contains(" latest ") || lower.contains(" news ") -> {
                 val opened = runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(text)))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
+                    context.startActivity(Intent(Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(text)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.isSuccess
-                if (opened) "I'll look that up on Google. Search results are opening in your browser; Nova doesn't yet read and summarize the results inside the app."
+                if (opened) "I'll look that up on Google. Results open in your browser; Nova doesn't yet read and summarize pages inside the app."
                 else "I couldn't open a browser to search that question."
             }
             lower == "help" || lower.contains("what can you do") ->
-                "I can open YouTube, Chrome, Maps, Gmail, Photos, Play Store, Camera, Phone, Messages, Clock, Calendar and Settings when installed. I can also open Google Search for questions. In-app web summaries and the offline AI model are still future upgrades."
+                "Try: 'open YouTube', 'open Camera', 'open Gmail', 'directions to Lucknow station', 'set a timer for 5 minutes', 'set an alarm', 'call 9876543210', or 'search Google for space news'. Calling requires you to confirm in the dialer. The offline AI model and in-app web summaries are still being built."
             else ->
-                "I don't have my AI language model connected yet. Try 'open YouTube', 'open Maps', or 'search Google for $text'."
+                "I don't have my AI language model connected yet. Try 'open YouTube', 'set a timer for 5 minutes', or 'search Google for $text'."
         }
         messages = messages + ChatMessage(answer, true)
         status = "Ready · response generated on device"
